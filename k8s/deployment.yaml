@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: task-api-deployment
+  name: deployment
   namespace: default
 spec:
   replicas: 2
