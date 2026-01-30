@@ -2,60 +2,61 @@ pipeline {
     agent any
 
     environment {
-        // Docker image info
-        DOCKER_IMAGE = "your_dockerhub_username/task_api" // Replace with your Docker Hub username
-        IMAGE_TAG = "latest"  // Or use Git commit hash
-
-        // Kubernetes deployment info
-        K8S_DEPLOYMENT = "task-api-deployment"
-        K8S_CONTAINER = "task-api"  // container name inside deployment
-        K8S_NAMESPACE = "default"
-
-        // Credentials IDs in Jenkins
-        DOCKER_CREDENTIALS_ID = "dockerhub-credentials"  // Set in Jenkins credentials
+        DOCKERHUB_USER = "mariemsouadi12189"     // Replace with your Docker Hub username
+        BACKEND_IMAGE  = "task_api"                    // Docker image name
+        IMAGE_TAG      = "latest"                      // fixed tag or use git commit hash
     }
 
     stages {
-        stage('Checkout Code') {
+
+        stage("Checkout Code") {
             steps {
-                git branch: 'main', url: 'https://github.com/mariemsouadi123/Task-api.git'
+                git branch: 'master', 
+                    url: 'https://github.com/mariemsouadi12189/task_api.git' // replace with your repo
             }
         }
 
-        stage('Build Docker Image') {
+        stage("Build Docker Image") {
             steps {
                 script {
-                    sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
+                    // Build Docker image
+                    docker.build("${DOCKERHUB_USER}/${BACKEND_IMAGE}:${IMAGE_TAG}", ".")
                 }
             }
         }
 
-        stage('Docker Login') {
+        stage("Push Docker Image") {
             steps {
-                script {
-                    // Docker Hub login using Jenkins credentials
-                    withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID, 
-                                                      usernameVariable: 'DOCKER_USER', 
-                                                      passwordVariable: 'DOCKER_PASS')]) {
-                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                    }
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',  // set your Docker Hub creds in Jenkins
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh """
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                        docker push ${DOCKERHUB_USER}/${BACKEND_IMAGE}:${IMAGE_TAG}
+                    """
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        stage("Deploy to Kubernetes") {
             steps {
-                sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
-            }
-        }
+                withCredentials([
+                    file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')
+                ]) {
+                    sh """
+                        export KUBECONFIG=\$KUBECONFIG_FILE
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                script {
-                    // Update image in k8s deployment
-                    sh "kubectl set image deployment/${K8S_DEPLOYMENT} ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${K8S_NAMESPACE}"
-                    // Wait for rollout to finish
-                    sh "kubectl rollout status deployment/${K8S_DEPLOYMENT} -n ${K8S_NAMESPACE}"
+                        # Apply Deployment and Service
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+
+                        # Wait until rollout completes
+                        kubectl rollout status deployment/task-api-deployment -n default
+                    """
                 }
             }
         }
@@ -63,14 +64,10 @@ pipeline {
 
     post {
         always {
-            // Clean up local images
+            // Clean local Docker images
             sh "docker image prune -f"
         }
-        success {
-            echo "✅ Deployment successful!"
-        }
-        failure {
-            echo "❌ Deployment failed!"
-        }
+        success { echo "✅ Pipeline successful!" }
+        failure { echo "❌ Pipeline failed!" }
     }
 }
