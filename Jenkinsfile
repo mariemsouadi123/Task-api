@@ -3,16 +3,17 @@ pipeline {
 
     environment {
         DOCKERHUB_USER = "mariemsouadi12189"     // Replace with your Docker Hub username
-        BACKEND_IMAGE  = "task_api"                    // Docker image name
-        IMAGE_TAG      = "latest"                      // fixed tag or use git commit hash
+        BACKEND_IMAGE  = "task_api"              // Docker image name
+        IMAGE_TAG      = "latest"                // fixed tag or use git commit hash
     }
 
     stages {
 
         stage("Checkout Code") {
             steps {
-                git branch: 'master', 
-                    url: 'https://github.com/mariemsouadi12189/task_api.git' // replace with your repo
+                git branch: 'main',
+                    credentialsId: 'github-pat',   // <-- Jenkins GitHub PAT credential
+                    url: 'https://github.com/mariemsouadi12189/task_api.git'
             }
         }
 
@@ -29,7 +30,7 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub-creds',  // set your Docker Hub creds in Jenkins
+                        credentialsId: 'dockerhub-creds',  // Jenkins Docker Hub creds
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )
