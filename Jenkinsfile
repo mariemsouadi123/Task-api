@@ -13,7 +13,7 @@ pipeline {
             steps {
                 git branch: 'main',
                     credentialsId: 'github-pat',   // <-- Jenkins GitHub PAT credential
-                    url: 'https://github.com/mariemsouadi12189/task_api.git'
+                    url: 'https://github.com/mariemsouadi123/Task-api'
             }
         }
 
