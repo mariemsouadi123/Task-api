@@ -11,7 +11,7 @@ pipeline {
 
         stage("Checkout Code") {
             steps {
-                git branch: 'main',
+                git branch: 'master',
                     credentialsId: 'github-pat',   // <-- Jenkins GitHub PAT credential
                     url: 'https://github.com/mariemsouadi123/Task-api'
             }
