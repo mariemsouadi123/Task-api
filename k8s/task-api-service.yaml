@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-api-service
+  namespace: default
+spec:
+  selector:
+    app: task-api
+  type: NodePort   
+  ports:
+    - protocol: TCP
+      port: 8000       
+      targetPort: 8000 
+      nodePort: 30080  
