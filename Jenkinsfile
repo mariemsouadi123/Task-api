@@ -2,11 +2,19 @@ pipeline {
     agent any
 
     environment {
+        // Docker image info
         DOCKER_IMAGE = "mariemsouadi12189/task_api"
         IMAGE_TAG    = "latest"
+
+        // Kubernetes info
         K8S_NAMESPACE  = "default"
+
+        // Jenkins credentials
         DOCKER_CREDENTIALS_ID = "dockerhub-creds"
         KUBECONFIG_CRED_ID    = "kubeconfig"
+
+        // Trivy cache location (pre-downloaded DB)
+        TRIVY_CACHE_DIR = "/var/jenkins_home/.cache/trivy"
     }
 
     stages {
@@ -29,8 +37,12 @@ pipeline {
                 sh """
                 mkdir -p trivy-report
 
-                # Scan Docker image using Trivy inside Jenkins container
-                trivy image --severity HIGH,CRITICAL \
+                # Use pre-downloaded Trivy DB
+                export TRIVY_CACHE_DIR=${TRIVY_CACHE_DIR}
+
+                # Scan Docker image offline
+                trivy image --offline-scan \
+                    --severity HIGH,CRITICAL \
                     --format template \
                     --template "@contrib/html.tpl" \
                     --output trivy-report/trivy-report.html \
@@ -78,6 +90,7 @@ pipeline {
 
     post {
         always {
+            // Archive and display the Trivy HTML report
             archiveArtifacts artifacts: 'trivy-report/trivy-report.html', fingerprint: true
 
             publishHTML(target: [
@@ -89,6 +102,7 @@ pipeline {
                 alwaysLinkToLastBuild: true
             ])
 
+            // Cleanup unused Docker images
             sh "docker image prune -f"
         }
 
