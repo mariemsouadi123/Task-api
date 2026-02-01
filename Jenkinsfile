@@ -13,7 +13,7 @@ pipeline {
         DOCKER_CREDENTIALS_ID = "dockerhub-creds"
         KUBECONFIG_CRED_ID    = "kubeconfig"
 
-        // Trivy cache location (pre-downloaded DB)
+        // Trivy cache folder for offline DB
         TRIVY_CACHE_DIR = "/var/jenkins_home/.cache/trivy"
     }
 
@@ -37,10 +37,9 @@ pipeline {
                 sh """
                 mkdir -p trivy-report
 
-                # Use pre-downloaded Trivy DB
+                # Offline scan using pre-downloaded Trivy DB
                 export TRIVY_CACHE_DIR=${TRIVY_CACHE_DIR}
 
-                # Scan Docker image offline
                 trivy image --offline-scan \
                     --severity HIGH,CRITICAL \
                     --format template \
@@ -79,7 +78,7 @@ pipeline {
                     kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
 
                     # Wait for rollout to complete
-                    DEPLOYMENT_NAME=\$(kubectl get deployment -n ${K8S_NAMESPACE} -o jsonpath='{.items[0].metadata.name}')
+                    DEPLOYMENT_NAME=\$(kubectl get deployment -n ${K8S_NAMESPACE} 
                     echo "Waiting for rollout of deployment: \$DEPLOYMENT_NAME"
                     kubectl rollout status deployment/\$DEPLOYMENT_NAME -n ${K8S_NAMESPACE}
                     """
