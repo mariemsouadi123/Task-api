@@ -7,8 +7,6 @@ pipeline {
         IMAGE_TAG = "latest"
 
         // Kubernetes info
-        K8S_DEPLOYMENT = "task-api-deployment"
-        K8S_CONTAINER  = "task-api"
         K8S_NAMESPACE  = "default"
 
         // Jenkins credentials
@@ -31,6 +29,22 @@ pipeline {
             }
         }
 
+        stage('Trivy Image Scan') {
+            steps {
+                sh """
+                mkdir -p trivy-report
+
+                trivy image \
+                  --severity HIGH,CRITICAL \
+                  --scanners vuln \
+                  --format template \
+                  --template "@trivy-templates/html.tpl" \
+                  --output trivy-report/trivy-report.html \
+                  ${DOCKER_IMAGE}:${IMAGE_TAG} || true
+                """
+            }
+        }
+
         stage('Docker Login & Push') {
             steps {
                 withCredentials([
@@ -48,35 +62,21 @@ pipeline {
             }
         }
 
-        stage('Trivy Image Scan') {
-            steps {
-                sh """
-                mkdir -p trivy-report
-
-                trivy image \
-                  --severity HIGH,CRITICAL \
-                  --scanners vuln \
-                  --format template \
-                  --template "@trivy-templates/html.tpl" \
-                  --output trivy-report/trivy-report.html \
-                  ${DOCKER_IMAGE}:${IMAGE_TAG} || true
-                """
-            }
-        }
-
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG')]) {
                     sh """
                     export KUBECONFIG=$KUBECONFIG
 
+                    # Show current contexts
                     kubectl config get-contexts
-                    kubectl set image deployment/${K8S_DEPLOYMENT} \
-                      ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} \
-                      -n ${K8S_NAMESPACE}
 
-                    kubectl rollout status deployment/${K8S_DEPLOYMENT} \
-                      -n ${K8S_NAMESPACE}
+                    # Apply deployment and service YAMLs
+                    kubectl apply -f k8s/deployment.yaml -n ${K8S_NAMESPACE}
+                    kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
+
+                    # Wait for rollout to complete
+                    kubectl rollout status deployment/task-api-deployment -n ${K8S_NAMESPACE}
                     """
                 }
             }
@@ -87,7 +87,6 @@ pipeline {
         always {
             archiveArtifacts artifacts: 'trivy-report/trivy-report.html', fingerprint: true
 
-            // Optional: Display the HTML report in Jenkins
             publishHTML(target: [
                 reportDir: 'trivy-report',
                 reportFiles: 'trivy-report.html',
@@ -107,4 +106,3 @@ pipeline {
         }
     }
 }
-
