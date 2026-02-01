@@ -19,8 +19,8 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'maaster',
-                    url: 'https://github.com/mariemsouadi123/Task-api.git'
+                git branch: 'master',
+                    url: 'https://github.com/mariemsouadi123/Task-api'
             }
         }
 
