@@ -2,18 +2,15 @@ pipeline {
     agent any
 
     environment {
-        // Docker image info
         DOCKER_IMAGE = "mariemsouadi12189/task_api"
         IMAGE_TAG    = "latest"
 
-        // Kubernetes info
-        K8S_NAMESPACE  = "default"
+        K8S_NAMESPACE = "default"
 
-        // Jenkins credentials
         DOCKER_CREDENTIALS_ID = "dockerhub-creds"
         KUBECONFIG_CRED_ID    = "kubeconfig"
 
-        // Trivy cache folder for offline DB
+        // Trivy DB cache (already downloaded)
         TRIVY_CACHE_DIR = "/var/jenkins_home/.cache/trivy"
     }
 
@@ -32,21 +29,22 @@ pipeline {
             }
         }
 
-        stage('Trivy Image Scan') {
+        stage('Trivy Image Scan (Offline)') {
             steps {
-                sh """
+                sh '''
                 mkdir -p trivy-report
 
-                # Offline scan using pre-downloaded Trivy DB
-                export TRIVY_CACHE_DIR=${TRIVY_CACHE_DIR}
+                export TRIVY_CACHE_DIR=/var/jenkins_home/.cache/trivy
+                export TRIVY_OFFLINE_SCAN=true
 
-                trivy image --offline-scan \
-                    --severity HIGH,CRITICAL \
-                    --format template \
-                    --template "@contrib/html.tpl" \
-                    --output trivy-report/trivy-report.html \
-                    ${DOCKER_IMAGE}:${IMAGE_TAG} || true
-                """
+                trivy image \
+                  --offline-scan \
+                  --severity HIGH,CRITICAL \
+                  --format template \
+                  --template "@contrib/html.tpl" \
+                  --output trivy-report/trivy-report.html \
+                  mariemsouadi12189/task_api:latest || true
+                '''
             }
         }
 
@@ -54,34 +52,35 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: env.DOCKER_CREDENTIALS_ID,
+                        credentialsId: DOCKER_CREDENTIALS_ID,
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )
                 ]) {
-                    sh """
-                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                    docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
-                    """
+                    sh '''
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker push mariemsouadi12189/task_api:latest
+                    '''
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
-                    sh """
-                    export KUBECONFIG=\$KUBECONFIG_FILE
+                withCredentials([
+                    file(credentialsId: KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')
+                ]) {
+                    sh '''
+                    export KUBECONFIG=$KUBECONFIG_FILE
 
-                    # Apply deployment and service YAMLs
-                    kubectl apply -f k8s/deployment.yaml -n ${K8S_NAMESPACE}
-                    kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
+                    kubectl apply -f k8s/deployment.yaml -n default
+                    kubectl apply -f k8s/service.yaml -n default
 
-                    # Wait for rollout to complete
-                    DEPLOYMENT_NAME=\$(kubectl get deployment -n ${K8S_NAMESPACE} 
-                    echo "Waiting for rollout of deployment: \$DEPLOYMENT_NAME"
-                    kubectl rollout status deployment/\$DEPLOYMENT_NAME -n ${K8S_NAMESPACE}
-                    """
+                    DEPLOYMENT_NAME=$(kubectl get deployment -n default -o jsonpath="{.items[0].metadata.name}")
+
+                    echo "Waiting for rollout of deployment: $DEPLOYMENT_NAME"
+                    kubectl rollout status deployment/$DEPLOYMENT_NAME -n default
+                    '''
                 }
             }
         }
@@ -89,7 +88,6 @@ pipeline {
 
     post {
         always {
-            // Archive and display the Trivy HTML report
             archiveArtifacts artifacts: 'trivy-report/trivy-report.html', fingerprint: true
 
             publishHTML(target: [
@@ -97,11 +95,9 @@ pipeline {
                 reportFiles: 'trivy-report.html',
                 reportName: 'Trivy Vulnerability Report',
                 keepAll: true,
-                allowMissing: false,
                 alwaysLinkToLastBuild: true
             ])
 
-            // Cleanup unused Docker images
             sh "docker image prune -f"
         }
 
