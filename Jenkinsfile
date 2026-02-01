@@ -34,13 +34,17 @@ pipeline {
                 sh """
                 mkdir -p trivy-report
 
-                trivy image \
-                  --severity HIGH,CRITICAL \
-                  --scanners vuln \
-                  --format template \
-                  --template "@trivy-templates/html.tpl" \
-                  --output trivy-report/trivy-report.html \
-                  ${DOCKER_IMAGE}:${IMAGE_TAG} || true
+                # Run Trivy via Docker
+                docker run --rm \\
+                    -v /var/run/docker.sock:/var/run/docker.sock \\
+                    -v \$(pwd)/trivy-report:/trivy-report \\
+                    aquasec/trivy:latest image \\
+                    --severity HIGH,CRITICAL \\
+                    --scanners vuln \\
+                    --format template \\
+                    --template "@contrib/html.tpl" \\
+                    --output /trivy-report/trivy-report.html \\
+                    ${DOCKER_IMAGE}:${IMAGE_TAG} || true
                 """
             }
         }
@@ -75,8 +79,9 @@ pipeline {
                     kubectl apply -f k8s/deployment.yaml -n ${K8S_NAMESPACE}
                     kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
 
-                    # Wait for rollout to complete
-                    kubectl rollout status deployment/task-api-deployment -n ${K8S_NAMESPACE}
+                    # Wait for rollout to complete (replace with actual deployment name from deployment.yaml)
+                    DEPLOYMENT_NAME=\$(kubectl get deployment -n ${K8S_NAMESPACE} -o jsonpath='{.items[0].metadata.name}')
+                    kubectl rollout status deployment/deployment.yaml -n ${K8S_NAMESPACE}
                     """
                 }
             }
@@ -85,6 +90,7 @@ pipeline {
 
     post {
         always {
+            // Archive and display the Trivy HTML report
             archiveArtifacts artifacts: 'trivy-report/trivy-report.html', fingerprint: true
 
             publishHTML(target: [
