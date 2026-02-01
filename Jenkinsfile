@@ -2,73 +2,102 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USER = "mariemsouadi12189"     // Replace with your Docker Hub username
-        BACKEND_IMAGE  = "task_api"              // Docker image name
-        IMAGE_TAG      = "latest"                // fixed tag or use git commit hash
+        // Docker image info
+        DOCKER_IMAGE = "mariemsouadi12189/task_api"
+        IMAGE_TAG = "latest"
+
+        // Kubernetes info
+        K8S_DEPLOYMENT = "task-api-deployment"
+        K8S_CONTAINER  = "task-api"
+        K8S_NAMESPACE  = "default"
+
+        // Jenkins credentials
+        DOCKER_CREDENTIALS_ID = "dockerhub-credentials"
     }
 
     stages {
 
-        stage("Checkout Code") {
+        stage('Checkout Code') {
             steps {
-                git branch: 'master',
-                    credentialsId: 'github-pat',   // <-- Jenkins GitHub PAT credential
-                    url: 'https://github.com/mariemsouadi123/Task-api'
+                git branch: 'main',
+                    url: 'https://github.com/mariemsouadi123/Task-api.git'
             }
         }
 
-        stage("Build Docker Image") {
+        stage('Build Docker Image') {
             steps {
-                script {
-                    // Build Docker image
-                    docker.build("${DOCKERHUB_USER}/${BACKEND_IMAGE}:${IMAGE_TAG}", ".")
-                }
+                sh """
+                docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
+                """
             }
         }
 
-        stage("Push Docker Image") {
+        stage('Docker Login & Push') {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub-creds',  // Jenkins Docker Hub creds
+                        credentialsId: env.DOCKER_CREDENTIALS_ID,
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )
                 ]) {
                     sh """
-                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                        docker push ${DOCKERHUB_USER}/${BACKEND_IMAGE}:${IMAGE_TAG}
+                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                    docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
                     """
                 }
             }
         }
 
-        stage("Deploy to Kubernetes") {
+        stage('Trivy Image Scan') {
             steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')
-                ]) {
-                    sh """
-                        export KUBECONFIG=\$KUBECONFIG_FILE
+                sh """
+                mkdir -p trivy-report
 
-                        # Apply Deployment and Service
-                        kubectl apply -f k8s/deployment.yaml
-                        kubectl apply -f k8s/service.yaml
+                # JSON report
+                trivy image \
+                  --severity HIGH,CRITICAL \
+                  --scanners vuln \
+                  --format json \
+                  --output trivy-report/trivy-report.json \
+                  ${DOCKER_IMAGE}:${IMAGE_TAG} || true
 
-                        # Wait until rollout completes
-                        kubectl rollout status deployment/task-api-deployment -n default
-                    """
-                }
+                # HTML report
+                trivy image \
+                  --severity HIGH,CRITICAL \
+                  --scanners vuln \
+                  --format template \
+                  --template "@trivy-templates/html.tpl" \
+                  --output trivy-report/trivy-report.html \
+                  ${DOCKER_IMAGE}:${IMAGE_TAG} || true
+                """
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh """
+                kubectl set image deployment/${K8S_DEPLOYMENT} \
+                  ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} \
+                  -n ${K8S_NAMESPACE}
+
+                kubectl rollout status deployment/${K8S_DEPLOYMENT} \
+                  -n ${K8S_NAMESPACE}
+                """
             }
         }
     }
 
     post {
         always {
-            // Clean local Docker images
+            archiveArtifacts artifacts: 'trivy-report/*', fingerprint: true
             sh "docker image prune -f"
         }
-        success { echo "✅ Pipeline successful!" }
-        failure { echo "❌ Pipeline failed!" }
+        success {
+            echo "✅ Pipeline completed successfully!"
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+        }
     }
 }
