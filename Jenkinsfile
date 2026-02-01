@@ -4,14 +4,14 @@ pipeline {
     environment {
         // Docker image info
         DOCKER_IMAGE = "mariemsouadi12189/task_api"
-        IMAGE_TAG = "latest"
+        IMAGE_TAG    = "latest"
 
         // Kubernetes info
         K8S_NAMESPACE  = "default"
 
         // Jenkins credentials
         DOCKER_CREDENTIALS_ID = "dockerhub-creds"
-        KUBECONFIG_CRED_ID   = "kubeconfig"
+        KUBECONFIG_CRED_ID    = "kubeconfig"
     }
 
     stages {
@@ -34,16 +34,9 @@ pipeline {
                 sh """
                 mkdir -p trivy-report
 
-                # Run Trivy via Docker
-                docker run --rm \\
-                    -v /var/run/docker.sock:/var/run/docker.sock \\
-                    -v \$(pwd)/trivy-report:/trivy-report \\
-                    aquasec/trivy:latest image \\
-                    --severity HIGH,CRITICAL \\
-                    --scanners vuln \\
-                    --format template \\
-                    --template "@contrib/html.tpl" \\
-                    --output /trivy-report/trivy-report.html \\
+                # Scan Docker image using host Trivy installation
+                trivy image --severity HIGH,CRITICAL --format html \
+                    --output trivy-report/trivy-report.html \
                     ${DOCKER_IMAGE}:${IMAGE_TAG} || true
                 """
             }
@@ -68,20 +61,18 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG')]) {
+                withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
                     sh """
-                    export KUBECONFIG=$KUBECONFIG
-
-                    # Show current contexts
-                    kubectl config get-contexts
+                    export KUBECONFIG=\$KUBECONFIG_FILE
 
                     # Apply deployment and service YAMLs
                     kubectl apply -f k8s/deployment.yaml -n ${K8S_NAMESPACE}
                     kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
 
-                    # Wait for rollout to complete (replace with actual deployment name from deployment.yaml)
+                    # Wait for rollout to complete
                     DEPLOYMENT_NAME=\$(kubectl get deployment -n ${K8S_NAMESPACE} -o jsonpath='{.items[0].metadata.name}')
-                    kubectl rollout status deployment/deployment.yaml -n ${K8S_NAMESPACE}
+                    echo "Waiting for rollout of deployment: \$DEPLOYMENT_NAME"
+                    kubectl rollout status deployment/\$DEPLOYMENT_NAME -n ${K8S_NAMESPACE}
                     """
                 }
             }
@@ -102,11 +93,14 @@ pipeline {
                 alwaysLinkToLastBuild: true
             ])
 
+            // Cleanup unused Docker images
             sh "docker image prune -f"
         }
+
         success {
             echo "✅ Pipeline completed successfully!"
         }
+
         failure {
             echo "❌ Pipeline failed!"
         }
