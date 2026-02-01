@@ -36,14 +36,14 @@ pipeline {
 
                 export TRIVY_CACHE_DIR=/var/jenkins_home/.cache/trivy
                 export TRIVY_OFFLINE_SCAN=true
+                export TRIVY_SKIP_DB_UPDATE=true
 
                 trivy image \
                   --offline-scan \
                   --severity HIGH,CRITICAL \
-                  --format template \
-                  --template "@contrib/html.tpl" \
-                  --output trivy-report/trivy-report.html \
-                  mariemsouadi12189/task_api:latest || true
+                  --format table \
+                  ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                  | tee trivy-report/trivy-report.txt || true
                 '''
             }
         }
@@ -88,16 +88,7 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'trivy-report/trivy-report.html', fingerprint: true
-
-            publishHTML(target: [
-                reportDir: 'trivy-report',
-                reportFiles: 'trivy-report.html',
-                reportName: 'Trivy Vulnerability Report',
-                keepAll: true,
-                alwaysLinkToLastBuild: true
-            ])
-
+            archiveArtifacts artifacts: 'trivy-report/trivy-report.txt', fingerprint: true
             sh "docker image prune -f"
         }
 
