@@ -13,6 +13,7 @@ pipeline {
 
         // Jenkins credentials
         DOCKER_CREDENTIALS_ID = "dockerhub-creds"
+        KUBECONFIG_CRED_ID   = "kubeconfig"
     }
 
     stages {
@@ -26,9 +27,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh """
-                docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
-                """
+                sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
             }
         }
 
@@ -54,15 +53,6 @@ pipeline {
                 sh """
                 mkdir -p trivy-report
 
-                # JSON report
-                trivy image \
-                  --severity HIGH,CRITICAL \
-                  --scanners vuln \
-                  --format json \
-                  --output trivy-report/trivy-report.json \
-                  ${DOCKER_IMAGE}:${IMAGE_TAG} || true
-
-                # HTML report
                 trivy image \
                   --severity HIGH,CRITICAL \
                   --scanners vuln \
@@ -76,25 +66,37 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-               withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                 sh """
-                 export KUBECONFIG=$KUBECONFIG
+                withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG')]) {
+                    sh """
+                    export KUBECONFIG=$KUBECONFIG
 
-                 kubectl config get-contexts
-                 kubectl set image deployment/${K8S_DEPLOYMENT} \
-                   ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} \
-                   -n ${K8S_NAMESPACE}
+                    kubectl config get-contexts
+                    kubectl set image deployment/${K8S_DEPLOYMENT} \
+                      ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} \
+                      -n ${K8S_NAMESPACE}
 
-                 kubectl rollout status deployment/${K8S_DEPLOYMENT} \
-                   -n ${K8S_NAMESPACE}
-                 """
+                    kubectl rollout status deployment/${K8S_DEPLOYMENT} \
+                      -n ${K8S_NAMESPACE}
+                    """
+                }
+            }
         }
     }
-}
 
     post {
         always {
-            archiveArtifacts artifacts: 'trivy-report/*', fingerprint: true
+            archiveArtifacts artifacts: 'trivy-report/trivy-report.html', fingerprint: true
+
+            // Optional: Display the HTML report in Jenkins
+            publishHTML(target: [
+                reportDir: 'trivy-report',
+                reportFiles: 'trivy-report.html',
+                reportName: 'Trivy Vulnerability Report',
+                keepAll: true,
+                allowMissing: false,
+                alwaysLinkToLastBuild: true
+            ])
+
             sh "docker image prune -f"
         }
         success {
