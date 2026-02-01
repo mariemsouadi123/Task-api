@@ -76,17 +76,21 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                kubectl set image deployment/${K8S_DEPLOYMENT} \
-                  ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} \
-                  -n ${K8S_NAMESPACE}
+               withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                 sh """
+                 export KUBECONFIG=$KUBECONFIG
 
-                kubectl rollout status deployment/${K8S_DEPLOYMENT} \
-                  -n ${K8S_NAMESPACE}
-                """
-            }
+                 kubectl config get-contexts
+                 kubectl set image deployment/${K8S_DEPLOYMENT} \
+                   ${K8S_CONTAINER}=${DOCKER_IMAGE}:${IMAGE_TAG} \
+                   -n ${K8S_NAMESPACE}
+
+                 kubectl rollout status deployment/${K8S_DEPLOYMENT} \
+                   -n ${K8S_NAMESPACE}
+                 """
         }
     }
+}
 
     post {
         always {
