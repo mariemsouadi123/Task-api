@@ -48,6 +48,20 @@ pipeline {
             }
         }
 
+        stage('Checkov IaC Scan (Kubernetes)') {
+            steps {
+                sh '''
+                mkdir -p checkov-report
+
+                checkov \
+                  -d k8s \
+                  --framework kubernetes \
+                  --output table \
+                  | tee checkov-report/checkov-report.txt || true
+                '''
+            }
+        }
+
         stage('Docker Login & Push') {
             steps {
                 withCredentials([
@@ -89,6 +103,8 @@ pipeline {
     post {
         always {
             archiveArtifacts artifacts: 'trivy-report/trivy-report.txt', fingerprint: true
+            archiveArtifacts artifacts: 'checkov-report/checkov-report.txt', fingerprint: true
+
             sh "docker image prune -f"
         }
 
