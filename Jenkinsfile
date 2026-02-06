@@ -48,19 +48,19 @@ pipeline {
             }
         }
 
-        stage('Checkov IaC Scan (Kubernetes)') {
-            steps {
-                sh '''
-                mkdir -p checkov-report
-
-                /root/.local/bin/checkov \
-                  -d k8s \
-                  --framework kubernetes \
-                  --output table \
-                  | tee checkov-report/checkov-report.txt || true
-                '''
-            }
-        }
+        stage('Checkov Scan') {
+           steps {
+               sh '''
+               mkdir -p checkov-report
+               docker run --rm \
+                 -v $PWD:/workspace \
+                 bridgecrew/checkov \
+                 -d /workspace/k8s \
+                 --framework kubernetes \
+                 --output table | tee checkov-report/checkov-report.txt
+              '''
+    }
+}
 
         stage('Docker Login & Push') {
             steps {
