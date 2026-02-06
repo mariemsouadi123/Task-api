@@ -57,7 +57,7 @@ pipeline {
                  bridgecrew/checkov \
                  -d /workspace/k8s \
                  --framework kubernetes \
-                 --output table | tee checkov-report/checkov-report.txt
+                 --output cli | tee checkov-report/checkov-report.txt
               '''
     }
 }
