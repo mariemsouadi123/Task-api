@@ -51,20 +51,12 @@ pipeline {
         stage('Checkov Scan') {
            steps {
               sh '''
-              echo "Jenkins workspace: $WORKSPACE"
-              ls -la $WORKSPACE
-
-             mkdir -p $WORKSPACE/checkov-report
-
-             docker run --rm \
-               -v "$WORKSPACE:/workspace" \
-               bridgecrew/checkov \
-               -d /workspace/k8s \
-               --framework kubernetes \
-               --output cli | tee $WORKSPACE/checkov-report/checkov-report.txt
-             '''
+              mkdir -p checkov-report
+              checkov -d k8s --framework kubernetes --output cli | tee checkov-report/checkov-report.txt
+              '''
     }
 }
+
 
         stage('Docker Login & Push') {
             steps {
