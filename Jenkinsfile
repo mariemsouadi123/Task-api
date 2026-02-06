@@ -53,7 +53,7 @@ pipeline {
                 sh '''
                 mkdir -p checkov-report
 
-                checkov \
+                /root/.local/bin/checkov \
                   -d k8s \
                   --framework kubernetes \
                   --output table \
