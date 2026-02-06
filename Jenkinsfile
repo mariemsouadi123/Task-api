@@ -51,7 +51,7 @@ pipeline {
         stage('Checkov Scan') {
            steps {
                sh '''
-               source ~/.venv/bin/activate
+               . ~/.venv/bin/activate
                mkdir -p checkov-report
                checkov -d k8s --framework kubernetes --output cli | tee checkov-report/checkov-report.txt
                '''
