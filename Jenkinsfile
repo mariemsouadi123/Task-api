@@ -50,15 +50,16 @@ pipeline {
 
         stage('Checkov Scan') {
            steps {
-               sh '''
-               mkdir -p checkov-report
-               docker run --rm \
-                 -v $PWD:/workspace \
-                 bridgecrew/checkov \
-                 -d /workspace/k8s \
-                 --framework kubernetes \
-                 --output cli | tee checkov-report/checkov-report.txt
-              '''
+              sh '''
+              mkdir -p checkov-report
+              docker run --rm \
+               -v "$PWD:/workspace" \
+               bridgecrew/checkov \
+               -d /workspace/k8s \
+               --framework kubernetes \
+               --output cli \
+               | tee checkov-report/checkov-report.txt
+             '''
     }
 }
 
